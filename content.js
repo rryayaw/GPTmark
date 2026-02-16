@@ -13,11 +13,25 @@ const bookmarkFillSVG = `
   <path d="M5 4.5A1.5 1.5 0 0 1 6.5 3h11A1.5 1.5 0 0 1 19 4.5v16.5l-7-4.5-7 4.5V4.5z"/>
 </svg>
 `;
-  
+
+const strip = `
+<div style="width: 80px; height: 5px; background-color: rgba(97, 95, 95, 0.8); margin-bottom: 4px; border-radius: 5px; margin-right: 10px;"></div>
+`;
+
 //adds bookmark button to action bar
 function addBookmarkToActionBar(actionBar) {
+  chrome.runtime.sendMessage({ action: "getBookmarks" }, (response) => {
+    if (response.bookmarked.includes(turn.getAttribute("data-testid"))) {
+        marked = true;
+        btn.innerHTML = bookmarkFillSVG;
+    }
+  });
+
   //avoid duplicate injections
   if (actionBar.dataset.gptmarkInjected) return;
+
+  const turn = actionBar.closest('[data-testid^="conversation-turn-"]');
+  if (!turn) return;
 
   const btn = document.createElement("button");
   btn.className =
@@ -35,12 +49,40 @@ function addBookmarkToActionBar(actionBar) {
 
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
-    marked = !marked;
-    btn.innerHTML = marked ? bookmarkFillSVG : bookmarkSVG;
+    const turnId = turn.getAttribute("data-testid");
+
+    chrome.runtime.sendMessage(
+      { action: "toggleBookmark", turnId: turnId }, 
+      (response) => {
+        if (response.success) {
+          marked = !marked;
+          btn.innerHTML = marked ? bookmarkFillSVG : bookmarkSVG;
+          console.log("Global bookmarks are now:", response.currentBookmarks);
+        }
+      }
+    );
   });
 
   actionBar.appendChild(btn);
   actionBar.dataset.gptmarkInjected = "true";
+}
+
+//adds the marked list container to the page
+function addMarkedList(){
+  if(document.getElementById("gptmark-list")) return;
+
+  const listContainer = document.createElement("div");
+  listContainer.id = "gptmark-list";  
+  listContainer.style.position = "fixed";
+  listContainer.style.top = "50%";
+  listContainer.style.right = "0";
+  listContainer.style.transform = "translateY(-50%)";
+  listContainer.style.borderRadius = "8px";
+  listContainer.style.padding = "8px";
+  listContainer.style.zIndex = "1000";
+
+  listContainer.innerHTML = strip;
+  document.body.appendChild(listContainer);
 }
 
 //Observes for changes in the document to dynamically add bookmark buttons
@@ -57,6 +99,11 @@ const observer = new MutationObserver(() => {
         addBookmarkToActionBar(actionBar);
       }
     });
+    
+  const chatMain = document.querySelector(".flex.flex-col.text-sm.pb-25");
+  if(chatMain){
+    addMarkedList();
+  }
 });
 
 observer.observe(document.body, {
